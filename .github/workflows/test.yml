@@ -14,4 +14,4 @@ jobs:
       - name: Run tests
         run: |
           dotnet test
-        working-directory: ./src
+        working-directory: .
