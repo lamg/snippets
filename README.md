@@ -102,6 +102,32 @@ dotnet publish -c Release
 - .NET 10.0 or later
 - F# 8.0 or later
 
+
+## Example Helix config
+
+After the `snippets` .NET tool is instealled you can configure Helix to use this server for Markdown files, by writing the following at `~/.config/helix/languages.toml`
+
+```toml
+[language-server.snippets]
+command = "snippets"
+
+[[language]]
+name = "markdown"
+file-types = ["md"]
+language-servers = ["snippets"]
+```
+
+The completions are triggered by the character `:`. The snippet file should be at `~/.config/helix/snippets.toml`. Example content:
+
+```toml
+:eq=≡
+:neq=≢
+:and=∧
+:or=∨
+:implies=⇒
+:follows=⇐
+```
+
 ## Testing
 
 The project includes comprehensive tests for:
