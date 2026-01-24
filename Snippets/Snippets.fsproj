@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Package as dotnet tool -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>snippets</ToolCommandName>
+    <PackageId>Snippets.Tool</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Luis Ángel Méndez Gort</Authors>
+    <Description>Language server for code snippet completion from TOML files</Description>
+    <PackageTags>lsp;language-server;snippets;completion</PackageTags>
+    <RepositoryUrl>https://github.com/lamg/snippets</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="TomlParser.fs" />
+    <Compile Include="SnippetMatcher.fs" />
+    <Compile Include="CompletionProvider.fs" />
+    <Compile Include="JsonRpc.fs" />
+    <Compile Include="LspProtocol.fs" />
+    <Compile Include="MessageHandler.fs" />
+    <Compile Include="Library.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Ionide.LanguageServerProtocol" />
+    <PackageReference Include="FSharp.SystemTextJson" />
+  </ItemGroup>
+</Project>

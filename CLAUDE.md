@@ -1,0 +1,5 @@
+- respect the editor settings in the .editorconfig file
+- consider that dotnet 10 captures the ouptut when running tests, so print statements for debugging won't work
+- plase take a look to https://fsprojects.github.io/ to find useful F# libraries, including JSON parsing
+- in F# an expression like Object.Methods arg, does not need parenthesis for passing the parameter, so please do not surround arg with parenthesis.
+- run the F# code formatter with the command 'fantomas <DIR>' to format the source code correctly.

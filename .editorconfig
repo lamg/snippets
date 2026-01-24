@@ -1,0 +1,8 @@
+[*.fs]
+indent_size = 2
+end_of_line = lf
+max_line_length = 120
+
+[*.fsx]
+indent_size = 2
+end_of_line = lf
