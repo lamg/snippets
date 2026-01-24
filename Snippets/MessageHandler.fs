@@ -91,7 +91,14 @@ let handleMessage (state: ServerState) (msg: JsonRpcMessage) : MessageResult =
       match deserializeParams<CompletionParams> paramsJson with
       | Some p ->
         match handleCompletion state p with
-        | Some result -> Response(createResponse id result)
+        | Some result ->
+          let response = createResponse id result
+          // Log the actual JSON response being sent
+          let responseJson =
+            System.Text.Json.JsonSerializer.Serialize(response.result, jsonOptions)
+
+          logDebug state $"Response JSON: {responseJson}"
+          Response response
         | None -> Response(createResponse id null)
       | None -> Response(createResponse id null)
     | _ ->

@@ -22,7 +22,10 @@ let jsonOptions =
   options.PropertyNamingPolicy <- JsonNamingPolicy.CamelCase
   // Use Untagged encoding for union types so U2<A,B> serializes as just A or B
   // without the {"Case":"C1","Fields":[...]} wrapper
-  let fsharpOptions = JsonFSharpOptions.Default().WithUnionUntagged()
+  // Also unwrap record cases so U2.C1 TextEdit serializes as just the TextEdit fields
+  let fsharpOptions =
+    JsonFSharpOptions.Default().WithUnionUntagged().WithUnionUnwrapRecordCases()
+
   options.Converters.Add(JsonFSharpConverter fsharpOptions)
   options
 

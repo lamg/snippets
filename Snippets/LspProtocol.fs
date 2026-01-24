@@ -147,20 +147,34 @@ let handleCompletion (state: ServerState) (p: CompletionParams) : CompletionList
   logDebug state.config $"Filtered to {filteredSnippets.Length} snippets"
 
   // Create completion items
-  // Include trigger char in insertText so selecting replaces properly
+  // Replace the trigger character with the expansion
   let items =
     filteredSnippets
     |> Array.map (fun (key, snippet) ->
+      // Create an InsertReplaceEdit with both insert and replace ranges
+      // This lets the editor choose based on its completion-replace setting
+      let triggerRange =
+        { Start =
+            { Line = line
+              Character = uint32 character - 1u }
+          End =
+            { Line = line
+              Character = uint32 character } }
+
+      let insertReplaceEdit: InsertReplaceEdit =
+        { NewText = snippet.expansion
+          Insert = triggerRange
+          Replace = triggerRange }
+
       { Label = key
         Kind = Some CompletionItemKind.Snippet
         Detail = Some snippet.expansion
         Documentation = None
         SortText = Some "0"
         FilterText = Some key
-        // Insert the expansion - Helix should replace from the trigger char
-        InsertText = Some snippet.expansion
+        InsertText = None // Use TextEdit exclusively for proper replacement
         InsertTextFormat = Some InsertTextFormat.PlainText
-        TextEdit = None
+        TextEdit = Some(U2.C2 insertReplaceEdit)
         TextEditText = None
         AdditionalTextEdits = None
         Command = None
@@ -171,6 +185,17 @@ let handleCompletion (state: ServerState) (p: CompletionParams) : CompletionList
         Tags = None
         InsertTextMode = None
         LabelDetails = None })
+
+  // Log textEdit details for debugging
+  if state.config.debug && items.Length > 0 then
+    let firstItem = items.[0]
+
+    match firstItem.TextEdit with
+    | Some(U2.C2 ire) ->
+      logDebug
+        state.config
+        $"InsertReplaceEdit range: ({ire.Insert.Start.Line},{ire.Insert.Start.Character})->({ire.Insert.End.Line},{ire.Insert.End.Character})"
+    | _ -> ()
 
   logDebug state.config $"Returning {items.Length} completion items"
 
