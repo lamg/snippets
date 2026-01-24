@@ -127,7 +127,7 @@ MIT License - see LICENSE file for details
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
 
-[dotnet-badge]: https://img.shields.io/badge/.NET-10.0-blue
-[mit-badge]: https://img.shields.io/badge/License-MIT-yellow.svg
-[fs-badge]: https://img.shields.io/badge/Language-F%23-blue
+[dotnet-badge]: https://img.shields.io/badge/.NET-10.0-blue?style=flat-square
+[mit-badge]: https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square
+[fs-badge]: https://img.shields.io/badge/Language-F%23-blue?style=flat-square
 [tests]: https://img.shields.io/github/actions/workflow/status/lamg/snippets/test.yml?style=flat-square&label=tests
