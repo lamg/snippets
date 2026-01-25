@@ -16,8 +16,8 @@ jobs:
       - name: publish snippets.tool
         run: |
           dotnet publish -c Release
-          dotnet pack
-          dotnet nuget push --skip-duplicate nupkg/*.nupkg -k $NUGET_API_KEY -s https://api.nuget.org/v3/index.json
+          dotnet pack -c Release
+          dotnet nuget push --skip-duplicate bin/Release/*.nupkg -k $NUGET_API_KEY -s https://api.nuget.org/v3/index.json
         working-directory: ./Snippets
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
