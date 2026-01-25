@@ -3,6 +3,7 @@
 [![.NET][dotnet-badge]](https://dotnet.microsoft.com/)
 [![F#][fs-badge]](https://fsharp.org/)
 [![License: MIT][mit-badge]](https://opensource.org/licenses/MIT)
+[![NuGet Version][nuget-version]][snippets.tool]
 ![Tests][tests]
 
 A Language Server Protocol (LSP) implementation for code snippet completion, designed to integrate with the Helix editor and other LSP-compatible editors.
@@ -159,3 +160,5 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 [mit-badge]: https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square
 [fs-badge]: https://img.shields.io/badge/Language-F%23-blue?style=flat-square
 [tests]: https://img.shields.io/github/actions/workflow/status/lamg/snippets/test.yml?style=flat-square&label=tests
+[nuget-version]: https://img.shields.io/nuget/v/snippets.tool?style=flat-square
+[snippets.tool]: https://www.nuget.org/packages/snippets.tool
