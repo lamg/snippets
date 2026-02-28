@@ -1,11 +1,9 @@
 module Snippets.LspProtocol
 
-open System
 open System.Collections.Generic
+open System.IO
 open System.Text.Json
 open Snippets.Types
-open Snippets.CompletionProvider
-open Ionide.LanguageServerProtocol.Types
 
 /// Conditional debug logging
 let logDebug (config: Config) (msg: string) =
@@ -24,61 +22,47 @@ let createServerState (snippets: Map<string, Snippet>) (config: Config) : Server
     config = config
     documents = Dictionary<string, string[]>() }
 
-/// Create initialize result
-let createInitializeResult () : InitializeResult =
-  { Capabilities =
-      { PositionEncoding = None
-        NotebookDocumentSync = None
-        // Use simple sync kind instead of full options for better compatibility
-        TextDocumentSync = Some(U2.C2 TextDocumentSyncKind.Full)
-        HoverProvider = None
-        CompletionProvider =
-          Some
-            { ResolveProvider = Some false
-              TriggerCharacters = Some [| ":"; "^"; "_" |]
-              AllCommitCharacters = None
-              CompletionItem = None
-              WorkDoneProgress = None }
-        SignatureHelpProvider = None
-        DefinitionProvider = None
-        TypeDefinitionProvider = None
-        ImplementationProvider = None
-        ReferencesProvider = None
-        DocumentHighlightProvider = None
-        DocumentSymbolProvider = None
-        WorkspaceSymbolProvider = None
-        CodeActionProvider = None
-        CodeLensProvider = None
-        DocumentFormattingProvider = None
-        DocumentRangeFormattingProvider = None
-        DocumentOnTypeFormattingProvider = None
-        RenameProvider = None
-        DocumentLinkProvider = None
-        ColorProvider = None
-        FoldingRangeProvider = None
-        DeclarationProvider = None
-        ExecuteCommandProvider = None
-        Workspace = None
-        SelectionRangeProvider = None
-        SemanticTokensProvider = None
-        CallHierarchyProvider = None
-        MonikerProvider = None
-        LinkedEditingRangeProvider = None
-        InlayHintProvider = None
-        InlineValueProvider = None
-        TypeHierarchyProvider = None
-        DiagnosticProvider = None
-        Experimental = None }
-    ServerInfo =
-      Some
-        { Name = "Snippets"
-          Version = Some "0.1.0" } }
+let private createJsonElement (write: Utf8JsonWriter -> unit) : JsonElement =
+  use stream = new MemoryStream()
+  use writer = new Utf8JsonWriter(stream)
+  write writer
+  writer.Flush()
+  use doc = JsonDocument.Parse(stream.ToArray())
+  doc.RootElement.Clone()
+
+/// Create initialize result JSON payload
+let createInitializeResult () : JsonElement =
+  createJsonElement (fun writer ->
+    writer.WriteStartObject()
+
+    writer.WritePropertyName("capabilities")
+    writer.WriteStartObject()
+    // TextDocumentSyncKind.Full = 1
+    writer.WriteNumber("textDocumentSync", 1)
+
+    writer.WritePropertyName("completionProvider")
+    writer.WriteStartObject()
+    writer.WriteBoolean("resolveProvider", false)
+    writer.WritePropertyName("triggerCharacters")
+    writer.WriteStartArray()
+    writer.WriteStringValue(":")
+    writer.WriteStringValue("^")
+    writer.WriteStringValue("_")
+    writer.WriteEndArray()
+    writer.WriteEndObject()
+
+    writer.WriteEndObject()
+
+    writer.WritePropertyName("serverInfo")
+    writer.WriteStartObject()
+    writer.WriteString("name", "Snippets")
+    writer.WriteString("version", "0.2.0")
+    writer.WriteEndObject()
+
+    writer.WriteEndObject())
 
 /// Handle textDocument/didOpen notification
-let handleDidOpen (state: ServerState) (p: DidOpenTextDocumentParams) : unit =
-  let uri = p.TextDocument.Uri
-  let text = p.TextDocument.Text
-
+let handleDidOpen (state: ServerState) (uri: string) (text: string) : unit =
   // Split by \n and keep empty lines (don't use RemoveEmptyEntries)
   // Also handle \r\n by trimming \r from each line
   let lines = text.Split('\n') |> Array.map (fun s -> s.TrimEnd('\r'))
@@ -87,30 +71,18 @@ let handleDidOpen (state: ServerState) (p: DidOpenTextDocumentParams) : unit =
   logDebug state.config $"Opened document: {uri} ({lines.Length} lines)"
 
 /// Handle textDocument/didChange notification
-let handleDidChange (state: ServerState) (p: DidChangeTextDocumentParams) : unit =
-  let uri = p.TextDocument.Uri
+let handleDidChange (state: ServerState) (uri: string) (text: string) : unit =
   logDebug state.config $"didChange received for: {uri}"
-  // Using TextDocumentSyncKind.Full, so we get full content
-  match p.ContentChanges |> Array.tryHead with
-  | Some change ->
-    // Handle U2 union type for change events
-    let text =
-      match change with
-      | U2.C1 evt -> evt.Text
-      | U2.C2 evt -> evt.Text
+  logDebug state.config $"Change text length: {text.Length}"
 
-    logDebug state.config $"Change text length: {text.Length}"
+  // Split by \n and keep empty lines, trim \r for Windows line endings
+  let lines = text.Split('\n') |> Array.map (fun s -> s.TrimEnd('\r'))
 
-    // Split by \n and keep empty lines, trim \r for Windows line endings
-    let lines = text.Split('\n') |> Array.map (fun s -> s.TrimEnd('\r'))
-
-    state.documents.[uri] <- lines
-    logDebug state.config $"Updated document: {uri} ({lines.Length} lines)"
-  | None -> logDebug state.config "No content changes in didChange"
+  state.documents.[uri] <- lines
+  logDebug state.config $"Updated document: {uri} ({lines.Length} lines)"
 
 /// Handle textDocument/didClose notification
-let handleDidClose (state: ServerState) (p: DidCloseTextDocumentParams) : unit =
-  let uri = p.TextDocument.Uri
+let handleDidClose (state: ServerState) (uri: string) : unit =
   state.documents.Remove(uri) |> ignore
   logDebug state.config $"Closed document: {uri}"
 
@@ -121,16 +93,7 @@ let getLineContent (state: ServerState) (uri: string) (line: int) : string =
   | _ -> ""
 
 /// Handle completion request
-let handleCompletion (state: ServerState) (p: CompletionParams) : CompletionList option =
-  let line = p.Position.Line
-  let character = p.Position.Character
-
-  // Get trigger character from context if available
-  let triggerChar =
-    p.Context
-    |> Option.bind (fun ctx -> ctx.TriggerCharacter)
-    |> Option.defaultValue ""
-
+let handleCompletion (state: ServerState) (line: int) (character: int) (triggerChar: string) : JsonElement option =
   logDebug state.config $"Completion at line {line}, char {character}, trigger: '{triggerChar}'"
 
   // Only return snippets when triggered by a trigger character
@@ -151,55 +114,66 @@ let handleCompletion (state: ServerState) (p: CompletionParams) : CompletionList
   let items =
     filteredSnippets
     |> Array.map (fun (key, snippet) ->
-      // Create an InsertReplaceEdit with both insert and replace ranges
-      // This lets the editor choose based on its completion-replace setting
-      let triggerRange =
-        { Start =
-            { Line = line
-              Character = uint32 character - 1u }
-          End =
-            { Line = line
-              Character = uint32 character } }
-
-      let insertReplaceEdit: InsertReplaceEdit =
-        { NewText = snippet.expansion
-          Insert = triggerRange
-          Replace = triggerRange }
-
-      { Label = key
-        Kind = Some CompletionItemKind.Snippet
-        Detail = Some snippet.expansion
-        Documentation = None
-        SortText = Some "0"
-        FilterText = Some key
-        InsertText = None // Use TextEdit exclusively for proper replacement
-        InsertTextFormat = Some InsertTextFormat.PlainText
-        TextEdit = Some(U2.C2 insertReplaceEdit)
-        TextEditText = None
-        AdditionalTextEdits = None
-        Command = None
-        Data = None
-        Deprecated = None
-        Preselect = None
-        CommitCharacters = None
-        Tags = None
-        InsertTextMode = None
-        LabelDetails = None })
+      let startCharacter = max 0 (character - 1)
+      (key, snippet.expansion, startCharacter, character))
 
   // Log textEdit details for debugging
   if state.config.debug && items.Length > 0 then
-    let firstItem = items.[0]
-
-    match firstItem.TextEdit with
-    | Some(U2.C2 ire) ->
-      logDebug
-        state.config
-        $"InsertReplaceEdit range: ({ire.Insert.Start.Line},{ire.Insert.Start.Character})->({ire.Insert.End.Line},{ire.Insert.End.Character})"
-    | _ -> ()
+    let _, _, startCharacter, endCharacter = items.[0]
+    logDebug state.config $"InsertReplaceEdit range: ({line},{startCharacter})->({line},{endCharacter})"
 
   logDebug state.config $"Returning {items.Length} completion items"
 
-  Some
-    { IsIncomplete = false
-      Items = items
-      ItemDefaults = None }
+  Some(
+    createJsonElement (fun writer ->
+      writer.WriteStartObject()
+      writer.WriteBoolean("isIncomplete", false)
+      writer.WritePropertyName("items")
+      writer.WriteStartArray()
+
+      for key, expansion, startCharacter, endCharacter in items do
+        writer.WriteStartObject()
+        writer.WriteString("label", key)
+        writer.WriteNumber("kind", 15)
+        writer.WriteString("detail", expansion)
+        writer.WriteString("sortText", "0")
+        writer.WriteString("filterText", key)
+        writer.WriteNumber("insertTextFormat", 1)
+
+        writer.WritePropertyName("textEdit")
+        writer.WriteStartObject()
+        writer.WriteString("newText", expansion)
+
+        writer.WritePropertyName("insert")
+        writer.WriteStartObject()
+        writer.WritePropertyName("start")
+        writer.WriteStartObject()
+        writer.WriteNumber("line", line)
+        writer.WriteNumber("character", startCharacter)
+        writer.WriteEndObject()
+        writer.WritePropertyName("end")
+        writer.WriteStartObject()
+        writer.WriteNumber("line", line)
+        writer.WriteNumber("character", endCharacter)
+        writer.WriteEndObject()
+        writer.WriteEndObject()
+
+        writer.WritePropertyName("replace")
+        writer.WriteStartObject()
+        writer.WritePropertyName("start")
+        writer.WriteStartObject()
+        writer.WriteNumber("line", line)
+        writer.WriteNumber("character", startCharacter)
+        writer.WriteEndObject()
+        writer.WritePropertyName("end")
+        writer.WriteStartObject()
+        writer.WriteNumber("line", line)
+        writer.WriteNumber("character", endCharacter)
+        writer.WriteEndObject()
+        writer.WriteEndObject()
+
+        writer.WriteEndObject()
+        writer.WriteEndObject()
+
+      writer.WriteEndArray()
+      writer.WriteEndObject()))

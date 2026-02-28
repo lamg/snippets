@@ -4,7 +4,6 @@ open System
 open System.IO
 open System.Text
 open System.Text.Json
-open System.Text.Json.Serialization
 
 /// JSON-RPC message envelope
 type JsonRpcMessage =
@@ -15,19 +14,103 @@ type JsonRpcMessage =
     result: JsonElement option
     error: JsonElement option }
 
-/// JSON serialization options for LSP
-let jsonOptions =
-  let options = JsonSerializerOptions()
-  options.DefaultIgnoreCondition <- JsonIgnoreCondition.WhenWritingNull
-  options.PropertyNamingPolicy <- JsonNamingPolicy.CamelCase
-  // Use Untagged encoding for union types so U2<A,B> serializes as just A or B
-  // without the {"Case":"C1","Fields":[...]} wrapper
-  // Also unwrap record cases so U2.C1 TextEdit serializes as just the TextEdit fields
-  let fsharpOptions =
-    JsonFSharpOptions.Default().WithUnionUntagged().WithUnionUnwrapRecordCases()
+let private tryGetProperty (name: string) (element: JsonElement) : JsonElement option =
+  if element.ValueKind <> JsonValueKind.Object then
+    None
+  else
+    let mutable value = Unchecked.defaultof<JsonElement>
 
-  options.Converters.Add(JsonFSharpConverter fsharpOptions)
-  options
+    if element.TryGetProperty(name, &value) then
+      Some value
+    else
+      None
+
+let private tryGetString (element: JsonElement) : string option =
+  if element.ValueKind = JsonValueKind.String then
+    Some(element.GetString())
+  else
+    None
+
+let private tryGetInt (element: JsonElement) : int option =
+  let mutable value = 0
+
+  if element.ValueKind = JsonValueKind.Number && element.TryGetInt32(&value) then
+    Some value
+  else
+    None
+
+let private parseJsonRpcMessageElement (element: JsonElement) : JsonRpcMessage =
+  if element.ValueKind <> JsonValueKind.Object then
+    raise (JsonException("Expected JSON object for JSON-RPC message."))
+
+  let jsonrpc =
+    tryGetProperty "jsonrpc" element |> Option.bind tryGetString |> Option.defaultValue "2.0"
+
+  let id =
+    match tryGetProperty "id" element with
+    | Some value when value.ValueKind = JsonValueKind.Null -> None
+    | Some value -> tryGetInt value
+    | None -> None
+
+  let methodName =
+    match tryGetProperty "method" element with
+    | Some value when value.ValueKind = JsonValueKind.Null -> None
+    | Some value -> tryGetString value
+    | None -> None
+
+  let paramsValue =
+    match tryGetProperty "params" element with
+    | Some value when value.ValueKind <> JsonValueKind.Null -> Some(value.Clone())
+    | _ -> None
+
+  let resultValue =
+    match tryGetProperty "result" element with
+    | Some value when value.ValueKind <> JsonValueKind.Null -> Some(value.Clone())
+    | _ -> None
+
+  let errorValue =
+    match tryGetProperty "error" element with
+    | Some value when value.ValueKind <> JsonValueKind.Null -> Some(value.Clone())
+    | _ -> None
+
+  { jsonrpc = jsonrpc
+    id = id
+    ``method`` = methodName
+    ``params`` = paramsValue
+    result = resultValue
+    error = errorValue }
+
+let private writeJsonRpcMessage (writer: Utf8JsonWriter) (msg: JsonRpcMessage) : unit =
+  writer.WriteStartObject()
+  writer.WriteString("jsonrpc", msg.jsonrpc)
+
+  match msg.id with
+  | Some id -> writer.WriteNumber("id", id)
+  | None -> ()
+
+  match msg.``method`` with
+  | Some methodName -> writer.WriteString("method", methodName)
+  | None -> ()
+
+  match msg.``params`` with
+  | Some paramsValue ->
+    writer.WritePropertyName("params")
+    paramsValue.WriteTo(writer)
+  | None -> ()
+
+  match msg.result with
+  | Some resultValue ->
+    writer.WritePropertyName("result")
+    resultValue.WriteTo(writer)
+  | None -> ()
+
+  match msg.error with
+  | Some errorValue ->
+    writer.WritePropertyName("error")
+    errorValue.WriteTo(writer)
+  | None -> ()
+
+  writer.WriteEndObject()
 
 /// Read a single byte from stream, returns None on EOF
 let private readByte (stream: Stream) : Async<byte option> =
@@ -130,12 +213,8 @@ let readMessage (stream: Stream) : Async<JsonRpcMessage option> =
             // Read exactly Content-Length bytes
             let! contentBytes = readContentBytes stream length
 
-            // Decode as UTF-8 string
-            let json = Encoding.UTF8.GetString contentBytes
-
-            // Deserialize
-            let msg = JsonSerializer.Deserialize<JsonRpcMessage>(json, jsonOptions)
-
+            use doc = JsonDocument.Parse(contentBytes)
+            let msg = parseJsonRpcMessageElement doc.RootElement
             return Some msg
           | true, length ->
             eprintfn "[JsonRpc] Invalid Content-Length (must be > 0): %d" length
@@ -148,7 +227,10 @@ let readMessage (stream: Stream) : Async<JsonRpcMessage option> =
           eprintfn "[JsonRpc] Missing Content-Length header"
           return None
     with ex ->
-      eprintfn "[JsonRpc] Read error: %s" ex.Message
+      let details =
+        if isNull ex.InnerException then ex.Message else $"{ex.Message} | Inner: {ex.InnerException.Message}"
+
+      eprintfn "[JsonRpc] Read error: %s" details
       return None
   }
 
@@ -156,9 +238,12 @@ let readMessage (stream: Stream) : Async<JsonRpcMessage option> =
 let writeMessage (output: Stream) (msg: JsonRpcMessage) : Async<unit> =
   async {
     try
-      // Serialize to JSON
-      let json = JsonSerializer.Serialize(msg, jsonOptions)
-      let contentBytes = Encoding.UTF8.GetBytes json
+      // Serialize message without runtime reflection.
+      use contentStream = new MemoryStream()
+      use writer = new Utf8JsonWriter(contentStream)
+      writeJsonRpcMessage writer msg
+      writer.Flush()
+      let contentBytes = contentStream.ToArray()
 
       // Create header
       let header = $"Content-Length: {contentBytes.Length}\r\n\r\n"
@@ -171,25 +256,43 @@ let writeMessage (output: Stream) (msg: JsonRpcMessage) : Async<unit> =
 
       do! output.FlushAsync() |> Async.AwaitTask
     with ex ->
-      eprintfn "[JsonRpc] Write error: %s" ex.Message
+      let details =
+        if isNull ex.InnerException then ex.Message else $"{ex.Message} | Inner: {ex.InnerException.Message}"
+
+      eprintfn "[JsonRpc] Write error: %s" details
   }
 
 /// Helper: Create response message
-let createResponse (id: int) (result: 'T) : JsonRpcMessage =
+let createResponse (id: int) (result: JsonElement) : JsonRpcMessage =
   { jsonrpc = "2.0"
     id = Some id
     ``method`` = None
     ``params`` = None
-    result = Some(JsonSerializer.SerializeToElement(result, jsonOptions))
+    result = Some result
     error = None }
+
+let private createJsonElement (write: Utf8JsonWriter -> unit) : JsonElement =
+  use stream = new MemoryStream()
+  use writer = new Utf8JsonWriter(stream)
+  write writer
+  writer.Flush()
+  use doc = JsonDocument.Parse(stream.ToArray())
+  doc.RootElement.Clone()
+
+let nullJsonElement : JsonElement = createJsonElement (fun writer -> writer.WriteNullValue())
 
 /// Helper: Create error response
 let createError (id: int) (code: int) (message: string) : JsonRpcMessage =
-  let errorObj = {| code = code; message = message |}
+  let errorObj =
+    createJsonElement (fun writer ->
+      writer.WriteStartObject()
+      writer.WriteNumber("code", code)
+      writer.WriteString("message", message)
+      writer.WriteEndObject())
 
   { jsonrpc = "2.0"
     id = Some id
     ``method`` = None
     ``params`` = None
     result = None
-    error = Some(JsonSerializer.SerializeToElement(errorObj, jsonOptions)) }
+    error = Some errorObj }

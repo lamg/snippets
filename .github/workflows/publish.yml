@@ -5,20 +5,108 @@ on:
       - "*"
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/dotnet/sdk:10.0
+  pack-rid:
+    name: Pack ${{ matrix.rid }} (AOT)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+          - os: macos-latest
+            rid: osx-arm64
 
     steps:
       - uses: actions/checkout@v4
-          
-      - name: publish snippets.tool
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Native AOT prerequisites (Linux)
+        if: runner.os == 'Linux'
         run: |
-          dotnet publish -c Release
-          dotnet pack -c Release
-          dotnet nuget push --skip-duplicate bin/Release/*.nupkg -k $NUGET_API_KEY -s https://api.nuget.org/v3/index.json
-        working-directory: ./Snippets
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-      
+          sudo apt-get update
+          sudo apt-get install -y clang zlib1g-dev
+
+      - name: Pack RID package
+        run: dotnet pack Snippets/Snippets.fsproj -c Release -r ${{ matrix.rid }} -o artifacts/${{ matrix.rid }}
+
+      - name: Upload RID package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg-${{ matrix.rid }}
+          path: artifacts/${{ matrix.rid }}/*.nupkg
+          if-no-files-found: error
+
+  pack-common:
+    name: Pack fallback and pointer
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Pack fallback package
+        run: |
+          dotnet pack Snippets/Snippets.fsproj -c Release -r any -p:PublishAot=false -o artifacts/any
+
+      - name: Pack pointer package
+        run: |
+          dotnet pack Snippets/Snippets.fsproj -c Release -o artifacts/pointer
+
+      - name: Upload fallback package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg-any
+          path: artifacts/any/*.nupkg
+          if-no-files-found: error
+
+      - name: Upload pointer package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg-pointer
+          path: artifacts/pointer/*.nupkg
+          if-no-files-found: error
+
+  publish:
+    name: Publish to NuGet
+    runs-on: ubuntu-latest
+    needs:
+      - pack-rid
+      - pack-common
+    env:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download built packages
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List package artifacts
+        run: find artifacts -name "*.nupkg" -print | sort
+
+      - name: Publish RID and fallback packages first
+        run: |
+          dotnet nuget push --skip-duplicate artifacts/nupkg-linux-x64/*.nupkg -k $NUGET_API_KEY -s https://api.nuget.org/v3/index.json
+          dotnet nuget push --skip-duplicate artifacts/nupkg-win-x64/*.nupkg -k $NUGET_API_KEY -s https://api.nuget.org/v3/index.json
+          dotnet nuget push --skip-duplicate artifacts/nupkg-osx-arm64/*.nupkg -k $NUGET_API_KEY -s https://api.nuget.org/v3/index.json
+          dotnet nuget push --skip-duplicate artifacts/nupkg-any/*.nupkg -k $NUGET_API_KEY -s https://api.nuget.org/v3/index.json
+
+      - name: Publish pointer package last
+        run: |
+          dotnet nuget push --skip-duplicate artifacts/nupkg-pointer/*.nupkg -k $NUGET_API_KEY -s https://api.nuget.org/v3/index.json

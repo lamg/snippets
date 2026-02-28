@@ -1,7 +1,6 @@
 module Snippets.MessageHandler
 
 open System.Text.Json
-open Ionide.LanguageServerProtocol.Types
 open Snippets.JsonRpc
 open Snippets.LspProtocol
 
@@ -16,13 +15,88 @@ let private logDebug (state: ServerState) (msg: string) =
   if state.config.debug then
     eprintfn "[MessageHandler] %s" msg
 
-/// Deserialize JSON params to specific type
-let private deserializeParams<'T> (paramsJson: JsonElement) : 'T option =
-  try
-    Some(JsonSerializer.Deserialize<'T>(paramsJson.GetRawText(), jsonOptions))
-  with ex ->
-    eprintfn "[MessageHandler] Failed to deserialize params: %s" ex.Message
+let private tryGetProperty (name: string) (element: JsonElement) : JsonElement option =
+  if element.ValueKind <> JsonValueKind.Object then
     None
+  else
+    let mutable value = Unchecked.defaultof<JsonElement>
+
+    if element.TryGetProperty(name, &value) then
+      Some value
+    else
+      None
+
+let private tryGetString (element: JsonElement) : string option =
+  if element.ValueKind = JsonValueKind.String then
+    Some(element.GetString())
+  else
+    None
+
+let private tryGetInt (element: JsonElement) : int option =
+  let mutable value = 0
+
+  if element.ValueKind = JsonValueKind.Number && element.TryGetInt32(&value) then
+    Some value
+  else
+    None
+
+let private parseDidOpenParams (paramsJson: JsonElement) : (string * string) option =
+  match tryGetProperty "textDocument" paramsJson with
+  | Some textDocument ->
+    match tryGetProperty "uri" textDocument |> Option.bind tryGetString, tryGetProperty "text" textDocument |> Option.bind tryGetString with
+    | Some uri, Some text -> Some(uri, text)
+    | _ -> None
+  | None -> None
+
+let private parseDidChangeParams (paramsJson: JsonElement) : (string * string) option =
+  let uri =
+    tryGetProperty "textDocument" paramsJson
+    |> Option.bind (tryGetProperty "uri")
+    |> Option.bind tryGetString
+
+  let text =
+    match tryGetProperty "contentChanges" paramsJson with
+    | Some contentChanges when contentChanges.ValueKind = JsonValueKind.Array ->
+      contentChanges.EnumerateArray()
+      |> Seq.tryHead
+      |> Option.bind (tryGetProperty "text")
+      |> Option.bind tryGetString
+    | _ -> None
+
+  match uri, text with
+  | Some uri, Some text -> Some(uri, text)
+  | _ -> None
+
+let private parseDidCloseParams (paramsJson: JsonElement) : string option =
+  tryGetProperty "textDocument" paramsJson
+  |> Option.bind (tryGetProperty "uri")
+  |> Option.bind tryGetString
+
+let private parseCompletionParams (paramsJson: JsonElement) : (string * int * int * string) option =
+  let uri =
+    tryGetProperty "textDocument" paramsJson
+    |> Option.bind (tryGetProperty "uri")
+    |> Option.bind tryGetString
+
+  let line =
+    tryGetProperty "position" paramsJson
+    |> Option.bind (tryGetProperty "line")
+    |> Option.bind tryGetInt
+
+  let character =
+    tryGetProperty "position" paramsJson
+    |> Option.bind (tryGetProperty "character")
+    |> Option.bind tryGetInt
+
+  let triggerChar =
+    tryGetProperty "context" paramsJson
+    |> Option.bind (tryGetProperty "triggerCharacter")
+    |> Option.bind tryGetString
+    |> Option.defaultValue ""
+
+  match uri, line, character with
+  | Some uri, Some line, Some character -> Some(uri, line, character, triggerChar)
+  | _ -> None
 
 /// Dispatch incoming JSON-RPC message
 let handleMessage (state: ServerState) (msg: JsonRpcMessage) : MessageResult =
@@ -49,9 +123,9 @@ let handleMessage (state: ServerState) (msg: JsonRpcMessage) : MessageResult =
   | Some "textDocument/didOpen" ->
     match msg.``params`` with
     | Some paramsJson ->
-      match deserializeParams<DidOpenTextDocumentParams> paramsJson with
-      | Some p ->
-        handleDidOpen state p
+      match parseDidOpenParams paramsJson with
+      | Some(uri, text) ->
+        handleDidOpen state uri text
         NoResponse
       | None -> NoResponse
     | None -> NoResponse
@@ -61,9 +135,9 @@ let handleMessage (state: ServerState) (msg: JsonRpcMessage) : MessageResult =
 
     match msg.``params`` with
     | Some paramsJson ->
-      match deserializeParams<DidChangeTextDocumentParams> paramsJson with
-      | Some p ->
-        handleDidChange state p
+      match parseDidChangeParams paramsJson with
+      | Some(uri, text) ->
+        handleDidChange state uri text
         NoResponse
       | None ->
         logDebug state "Failed to deserialize didChange params"
@@ -75,9 +149,9 @@ let handleMessage (state: ServerState) (msg: JsonRpcMessage) : MessageResult =
   | Some "textDocument/didClose" ->
     match msg.``params`` with
     | Some paramsJson ->
-      match deserializeParams<DidCloseTextDocumentParams> paramsJson with
-      | Some p ->
-        handleDidClose state p
+      match parseDidCloseParams paramsJson with
+      | Some uri ->
+        handleDidClose state uri
         NoResponse
       | None -> NoResponse
     | None -> NoResponse
@@ -88,19 +162,14 @@ let handleMessage (state: ServerState) (msg: JsonRpcMessage) : MessageResult =
       logDebug state "Handling completion request"
       logDebug state $"Raw params: {paramsJson.GetRawText()}"
 
-      match deserializeParams<CompletionParams> paramsJson with
-      | Some p ->
-        match handleCompletion state p with
+      match parseCompletionParams paramsJson with
+      | Some(_uri, line, character, triggerChar) ->
+        match handleCompletion state line character triggerChar with
         | Some result ->
           let response = createResponse id result
-          // Log the actual JSON response being sent
-          let responseJson =
-            System.Text.Json.JsonSerializer.Serialize(response.result, jsonOptions)
-
-          logDebug state $"Response JSON: {responseJson}"
           Response response
-        | None -> Response(createResponse id null)
-      | None -> Response(createResponse id null)
+        | None -> Response(createResponse id nullJsonElement)
+      | None -> Response(createResponse id nullJsonElement)
     | _ ->
       logDebug state "Completion request missing id or params"
       NoResponse
@@ -109,7 +178,7 @@ let handleMessage (state: ServerState) (msg: JsonRpcMessage) : MessageResult =
     match msg.id with
     | Some id ->
       logDebug state "Shutdown requested"
-      Response(createResponse id null)
+      Response(createResponse id nullJsonElement)
     | None -> NoResponse
 
   | Some "exit" ->

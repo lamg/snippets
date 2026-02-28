@@ -17,28 +17,28 @@ A Language Server Protocol (LSP) implementation for code snippet completion, des
 - **Helix Integration** - Optimized for the Helix editor
 - **Case-Sensitive Matching** - Configurable snippet matching
 - **Debug Logging** - Built-in debugging capabilities
-- **Multiple Installation Methods** - Easy install scripts for Linux, macOS, and Windows
+- **Cross-Platform Install** - Build and install via `dotnet fsi build.fsx`
+- **RID-Aware Tool Packages** - NuGet publishes Native AOT binaries when available, with `any` fallback
 
 ## Quick Start
 
 ### Installation
 
+Run from the repository root:
+
 **Linux/macOS:**
 ```bash
-cd Snippets
-./install.sh
+dotnet fsi build.fsx
 ```
 
 **Windows (PowerShell):**
 ```powershell
-cd Snippets
-.\install.ps1
+dotnet fsi build.fsx
 ```
 
 For development:
 ```bash
-cd Snippets
-./install-dev.sh
+dotnet fsi build.fsx --target InstallGlobalDev
 ```
 
 See [INSTALL.md](Snippets/INSTALL.md) for detailed instructions.
@@ -46,6 +46,7 @@ See [INSTALL.md](Snippets/INSTALL.md) for detailed instructions.
 ### Configuration
 
 The tool looks for snippets at `~/.config/helix/snippets.toml`
+`Snippets/snippets.toml` in this repository is a valid snippets file and a good starting point.
 
 Example snippets file:
 ```toml
@@ -97,7 +98,7 @@ dotnet test
 ### Build Release
 
 ```bash
-dotnet publish -c Release
+dotnet fsi build.fsx --target Pack
 ```
 
 ## Requirements
@@ -108,7 +109,7 @@ dotnet publish -c Release
 
 ## Example Helix config
 
-After the `snippets` .NET tool is instealled you can configure Helix to use this server for Markdown files, by writing the following at `~/.config/helix/languages.toml`
+After the `snippets` .NET tool is installed you can configure Helix to use this server for Markdown files, by writing the following at `~/.config/helix/languages.toml`
 
 ```toml
 [language-server.snippets]

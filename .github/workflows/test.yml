@@ -11,6 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Build (Release)
+        run: dotnet fsi build.fsx --target Build
+        working-directory: .
+
       - name: Run tests
         run: |
           dotnet test

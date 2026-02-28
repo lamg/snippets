@@ -31,7 +31,7 @@ let rec serverLoop (state: ServerState) (input: Stream) (output: Stream) =
           logInfo state.config.debug "Shutting down cleanly"
           return 0
       with ex ->
-        logError $"Error handling message: {ex.Message}"
+        logError $"Error handling message: {ex}"
         // Continue processing
         return! serverLoop state input output
   }
@@ -75,7 +75,7 @@ let main argv =
         logInfo finalConfig.debug $"Config error: {err}, using defaults"
         finalConfig
 
-    logInfo config.debug "Snippets Language Server v0.1.0"
+    logInfo config.debug "Snippets Language Server v0.2.0"
     logInfo config.debug "Starting server..."
 
     // Load snippets

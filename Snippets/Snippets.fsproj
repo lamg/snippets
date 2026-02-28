@@ -7,8 +7,11 @@
     <!-- Package as dotnet tool -->
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>snippets</ToolCommandName>
+    <ToolPackageRuntimeIdentifiers>linux-x64;win-x64;osx-arm64;any</ToolPackageRuntimeIdentifiers>
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
     <PackageId>Snippets.Tool</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Authors>Luis Ángel Méndez Gort</Authors>
     <Description>Language server for code snippet completion from TOML files</Description>
     <PackageTags>lsp;language-server;snippets;completion</PackageTags>
@@ -32,4 +35,5 @@
     <PackageReference Include="Ionide.LanguageServerProtocol" />
     <PackageReference Include="FSharp.SystemTextJson" />
   </ItemGroup>
+
 </Project>

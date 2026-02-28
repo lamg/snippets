@@ -1,37 +1,37 @@
 # Installation Guide
 
-This directory contains installation scripts for the Snippets Language Server.
+Install `Snippets.Tool` as a global .NET CLI tool from this repository.
+Run these commands from the repository root (the directory containing `build.fsx`).
 
-## Quick Install (Linux/macOS)
+## Quick Install
 
 ```bash
-./install.sh
+dotnet fsi build.fsx
 ```
 
-## Quick Install (PowerShell/Windows)
+This runs the default `InstallGlobal` target in `build.fsx`, which:
+- Restores/builds/packs the tool into `./nupkg`
+- Produces a local AOT package for your current platform (if configured)
+- Produces an `any` fallback package
+- Produces the pointer package consumed by `dotnet tool install`
+- Updates an existing global install, or installs it if missing
 
-```powershell
-.\install.ps1
-```
-
-## Development Install (Linux/macOS)
+## Development Reinstall
 
 For local development and testing:
 
 ```bash
-./install-dev.sh
+dotnet fsi build.fsx --target InstallGlobalDev
 ```
 
-## Manual Installation
+`InstallGlobalDev` forces a reinstall by uninstalling first, then reinstalling from the local package feed.
 
-If you prefer to install manually:
+## Build Package Only
+
+If you only want a release package:
 
 ```bash
-# Build the project
-dotnet publish -c Release
-
-# Install as a dotnet global tool
-dotnet tool install --global --add-source ./bin/Release/net10.0/publish Snippets.Tool
+dotnet fsi build.fsx --target Pack
 ```
 
 ## Configuration

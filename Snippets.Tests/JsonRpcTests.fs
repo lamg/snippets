@@ -3,6 +3,7 @@ module Snippets.Tests.JsonRpcTests
 open Xunit
 open System.IO
 open System.Text
+open System.Text.Json
 open Snippets.JsonRpc
 
 [<Fact>]
@@ -64,7 +65,8 @@ let ``readMessage handles empty stream`` () =
 
 [<Fact>]
 let ``createResponse creates valid response`` () =
-  let response = createResponse 123 "test result"
+  use doc = JsonDocument.Parse("\"test result\"")
+  let response = createResponse 123 (doc.RootElement.Clone())
   Assert.Equal("2.0", response.jsonrpc)
   Assert.Equal(Some 123, response.id)
   Assert.True response.result.IsSome
