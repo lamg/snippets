@@ -1,129 +1,54 @@
 # Snippets
 
-[![.NET][dotnet-badge]](https://dotnet.microsoft.com/)
-[![F#][fs-badge]](https://fsharp.org/)
+[![Tests][tests-badge]][tests-workflow]
+[![Lean][lean-badge]](https://lean-lang.org/)
+[![Nix][nix-badge]](https://nixos.org/)
 [![License: MIT][mit-badge]](https://opensource.org/licenses/MIT)
-[![NuGet Version][nuget-version]][snippets.tool]
-![Tests][tests]
 
-A Language Server Protocol (LSP) implementation for code snippet completion, designed to integrate with the Helix editor and other LSP-compatible editors.
-
-A Lean 4 rewrite with behavioral parity lives in [lean/](lean/README.md); the F# implementation below remains the reference.
+A Language Server Protocol (LSP) implementation for code snippet completion, written in Lean 4 and designed to integrate with the Helix editor and other LSP-compatible editors.
 
 [![asciicast](snippets.gif)](https://asciinema.org/a/3n6Jo2vDJN7YHpAt)
 
 ## Features
 
 - **LSP-Compliant** - Full support for the Language Server Protocol
-- **TOML Configuration** - Simple TOML format for snippet definitions
+- **Simple Configuration** - Plain `key=value` snippet definitions
 - **Helix Integration** - Optimized for the Helix editor
-- **Case-Sensitive Matching** - Configurable snippet matching
-- **Debug Logging** - Built-in debugging capabilities
-- **Cross-Platform Install** - Build and install via `dotnet fsi build.fsx`
-- **RID-Aware Tool Packages** - NuGet publishes Native AOT binaries when available, with `any` fallback
+- **Debug Logging** - Built-in debugging via `SNIPPETS_DEBUG`
 
-## Quick Start
+## Development environment
 
-### Installation
+The toolchain is pinned in `lean-toolchain` (`leanprover/lean4:v4.35.0`) and provided through Nix + elan:
 
-Run from the repository root:
-
-**Linux/macOS:**
 ```bash
-dotnet fsi build.fsx
+nix develop   # drops into a shell with lean/lake at the pinned version
+lake build snippets snippets-tests
+.lake/build/bin/snippets-tests
 ```
 
-**Windows (PowerShell):**
-```powershell
-dotnet fsi build.fsx
-```
+Note: Nix flakes only see tracked or staged files — run `git add` on new files once if `nix develop` reports that it cannot find the flake.
 
-For development:
+## Production install
+
 ```bash
-dotnet fsi build.fsx --target InstallGlobalDev
+nix develop -c lake build snippets snippets-tests
+.lake/build/bin/snippets-tests
+install -m 755 .lake/build/bin/snippets ~/.local/bin/snippets
+strip ~/.local/bin/snippets   # optional, 110 MB -> 76 MB
+cp snippets.toml ~/.config/helix/snippets.toml
 ```
 
-See [INSTALL.md](Snippets/INSTALL.md) for detailed instructions.
+The binary is statically linked against the Lean libraries, so the installed copy runs without the Lean toolchain or `LEAN_PATH` set.
 
-### Configuration
+## Running
 
-The tool looks for snippets at `~/.config/helix/snippets.toml`
-`Snippets/snippets.toml` in this repository is a valid snippets file and a good starting point.
-
-Example snippets file:
-```toml
-forloop=for i in 0..10 do
-ifblock=if condition then
-  // code
-endif
-```
-
-### Usage
-
-Run the language server:
 ```bash
 snippets
 ```
 
-Enable debug logging:
-```bash
-SNIPPETS_DEBUG=1 snippets
-```
+The server reads snippets from `~/.config/helix/snippets.toml` (falling back to `./snippets.toml`) and speaks LSP over stdin/stdout. Set `SNIPPETS_DEBUG=1` for debug logging on stderr.
 
-## Architecture
-
-The project consists of:
-
-- **Types.fs** - Core data types and configuration
-- **TomlParser.fs** - TOML snippet file parsing
-- **SnippetMatcher.fs** - Snippet matching and ranking
-- **CompletionProvider.fs** - LSP completion item generation
-- **LspProtocol.fs** - LSP protocol implementation
-- **JsonRpc.fs** - JSON-RPC message handling
-- **MessageHandler.fs** - Message routing and processing
-- **Program.fs** - Server entry point
-
-## Development
-
-### Build
-
-```bash
-dotnet build
-```
-
-### Run Tests
-
-```bash
-dotnet test
-```
-
-### Build Release
-
-```bash
-dotnet fsi build.fsx --target Pack
-```
-
-## Requirements
-
-- .NET 10.0 or later
-- F# 8.0 or later
-
-
-## Example Helix config
-
-After the `snippets` .NET tool is installed you can configure Helix to use this server for Markdown files, by writing the following at `~/.config/helix/languages.toml`
-
-```toml
-[language-server.snippets]
-command = "snippets"
-
-[[language]]
-name = "markdown"
-file-types = ["md"]
-language-servers = ["snippets"]
-```
-
-The completions are triggered by the character `:`. The snippet file should be at `~/.config/helix/snippets.toml`. Example content:
+Example snippets file:
 
 ```toml
 :eq=≡
@@ -134,34 +59,38 @@ The completions are triggered by the character `:`. The snippet file should be a
 :follows=⇐
 ```
 
-## Testing
+The completions are triggered by the characters `:`, `^`, and `_`. The full example file in this repository is [snippets.toml](snippets.toml).
 
-The project includes comprehensive tests for:
-- TOML parsing
-- Snippet matching
-- Completion provider logic
-- JSON-RPC message handling
+Example Helix configuration (`~/.config/helix/languages.toml`):
 
-Run tests with:
-```bash
-dotnet test
+```toml
+[language-server.snippets]
+command = "/home/lamg/.local/bin/snippets"
+
+[[language]]
+name = "markdown"
+language-servers = ["snippets"]
+
+[[language]]
+name = "lean"
+language-servers = ["lean", "snippets"]
 ```
 
-## Environment Variables
+## Layout
 
-- `SNIPPETS_DEBUG` - Set to `1` to enable debug logging (default: depends on config)
+- `SnippetsLean/Types.lean` — `Config` and `Snippet`
+- `SnippetsLean/TomlParser.lean` — the simple `key=value` snippets parser
+- `SnippetsLean/Config.lean` — config/snippet loading and `SNIPPETS_DEBUG`
+- `SnippetsLean/Protocol.lean` — server state, completion, message dispatch
+- `Main.lean` — the stdin/stdout server loop
+- `Tests/Main.lean` — parser, protocol, and framing tests
 
 ## License
 
-MIT License - see LICENSE file for details
+MIT License
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues and pull requests.
-
-[dotnet-badge]: https://img.shields.io/badge/.NET-10.0-blue?style=flat-square
-[mit-badge]: https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square
-[fs-badge]: https://img.shields.io/badge/Language-F%23-blue?style=flat-square
-[tests]: https://img.shields.io/github/actions/workflow/status/lamg/snippets/test.yml?style=flat-square&label=tests
-[nuget-version]: https://img.shields.io/nuget/v/snippets.tool?style=flat-square
-[snippets.tool]: https://www.nuget.org/packages/snippets.tool
+[tests-badge]: https://github.com/lamg/snippets/actions/workflows/test.yml/badge.svg
+[tests-workflow]: https://github.com/lamg/snippets/actions/workflows/test.yml
+[lean-badge]: https://img.shields.io/badge/Lean-4.35.0-blue?style=flat-square
+[nix-badge]: https://img.shields.io/badge/Nix-flake-5277C3?style=flat-square&logo=nixos&logoColor=white
+[mit-badge]: https://img.shields.io/badge/License-MIT-yellow?style=flat-square

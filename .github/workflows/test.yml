@@ -5,17 +5,18 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/dotnet/sdk:10.0
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build (Release)
-        run: dotnet fsi build.fsx --target Build
-        working-directory: .
+      - name: Build
+        uses: leanprover/lean-action@v1
+        with:
+          build: true
+          test: false
+          lint: false
 
       - name: Run tests
         run: |
-          dotnet test
-        working-directory: .
+          lake build snippets-tests
+          .lake/build/bin/snippets-tests

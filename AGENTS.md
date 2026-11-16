@@ -1,0 +1,3 @@
+- respect the editor settings in the .editorconfig file
+- the Lean toolchain is pinned in lean-toolchain; get a dev shell with `nix develop`, build with `lake build snippets snippets-tests`, run the tests with `.lake/build/bin/snippets-tests`
+- the example snippets file is snippets.toml at the repository root; the server reads ~/.config/helix/snippets.toml with ./snippets.toml as fallback
