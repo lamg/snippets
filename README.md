@@ -8,6 +8,8 @@
 
 A Language Server Protocol (LSP) implementation for code snippet completion, designed to integrate with the Helix editor and other LSP-compatible editors.
 
+A Lean 4 rewrite with behavioral parity lives in [lean/](lean/README.md); the F# implementation below remains the reference.
+
 [![asciicast](snippets.gif)](https://asciinema.org/a/3n6Jo2vDJN7YHpAt)
 
 ## Features

@@ -1,0 +1,14 @@
+name = "snippets"
+version = "0.2.0"
+defaultTargets = ["snippets"]
+
+[[lean_lib]]
+name = "SnippetsLean"
+
+[[lean_exe]]
+name = "snippets"
+root = "Main"
+
+[[lean_exe]]
+name = "snippets-tests"
+root = "Tests.Main"
