@@ -1,30 +1,34 @@
 import SnippetsLean
-import Lean.Data.Lsp.Communication
 
 open SnippetsLean
 
 /-- Sequential server loop over stdin/stdout, mirroring `Program.serverLoop`:
 one message at a time, handler errors are logged and the loop continues. -/
 partial def serverLoop (state : ServerState) (input output : IO.FS.Stream) : IO UInt32 := do
-  let msg ←
+  let msg? ←
     try
-      Lean.IO.FS.Stream.readLspMessage input
+      readMessage input
     catch _ =>
       logDebug state.config "EOF reached, exiting"
       return 0
-  try
-    let (state, result) ← handleMessage state msg
-    match result with
-    | MessageResult.response response =>
-      Lean.IO.FS.Stream.writeLspMessage output response
+  match msg? with
+  | none =>
+    logDebug state.config "EOF reached, exiting"
+    return 0
+  | some msg =>
+    try
+      let (state, result) ← handleMessage state msg
+      match result with
+      | MessageResult.response response =>
+        writeMessage output response
+        serverLoop state input output
+      | MessageResult.noResponse => serverLoop state input output
+      | MessageResult.shutdown =>
+        logDebug state.config "Shutting down cleanly"
+        return 0
+    catch ex =>
+      IO.eprintln s!"[Snippets] Error handling message: {ex}"
       serverLoop state input output
-    | MessageResult.noResponse => serverLoop state input output
-    | MessageResult.shutdown =>
-      logDebug state.config "Shutting down cleanly"
-      return 0
-  catch ex =>
-    IO.eprintln s!"[Snippets] Error handling message: {ex}"
-    serverLoop state input output
 
 def main : IO UInt32 := do
   try

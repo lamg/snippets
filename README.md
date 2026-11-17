@@ -34,11 +34,11 @@ Note: Nix flakes only see tracked or staged files — run `git add` on new files
 nix develop -c lake build snippets snippets-tests
 .lake/build/bin/snippets-tests
 install -m 755 .lake/build/bin/snippets ~/.local/bin/snippets
-strip ~/.local/bin/snippets   # optional, 110 MB -> 76 MB
+strip ~/.local/bin/snippets   # optional, 5.0 MB -> 3.3 MB
 cp snippets.toml ~/.config/helix/snippets.toml
 ```
 
-The binary is statically linked against the Lean libraries, so the installed copy runs without the Lean toolchain or `LEAN_PATH` set.
+The binary is statically linked, so the installed copy runs without the Lean toolchain or `LEAN_PATH` set. It stays small because JSON support comes from [lean-json](https://github.com/paulbutcher/lean-json), which depends only on `Init` and `Std` — nothing from the `Lean` library is imported, so the Lean frontend is not linked in.
 
 ## Running
 
@@ -81,6 +81,7 @@ language-servers = ["lean", "snippets"]
 - `SnippetsLean/Types.lean` — `Config` and `Snippet`
 - `SnippetsLean/TomlParser.lean` — the simple `key=value` snippets parser
 - `SnippetsLean/Config.lean` — config/snippet loading and `SNIPPETS_DEBUG`
+- `SnippetsLean/JsonRpc.lean` — JSON-RPC message type and `Content-Length` framing
 - `SnippetsLean/Protocol.lean` — server state, completion, message dispatch
 - `Main.lean` — the stdin/stdout server loop
 - `Tests/Main.lean` — parser, protocol, and framing tests

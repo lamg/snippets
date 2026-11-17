@@ -1,6 +1,16 @@
 {"version": "1.3.0",
  "packagesDir": ".lake/packages",
- "packages": [],
+ "packages":
+ [{"url": "https://github.com/paulbutcher/lean-json.git",
+   "type": "git",
+   "subDir": null,
+   "scope": "",
+   "rev": "ac33b338ab65514fe361f114040a4fb1a2384ca9",
+   "name": "json",
+   "manifestFile": "lake-manifest.json",
+   "inputRev": "v0.3.1",
+   "inherited": false,
+   "configFile": "lakefile.lean"}],
  "name": "snippets",
  "lakeDir": ".lake",
  "fixedToolchain": false}

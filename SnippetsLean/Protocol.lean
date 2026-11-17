@@ -1,12 +1,10 @@
-import Lean.Data.Json
-import Lean.Data.JsonRpc
+import Json
 import SnippetsLean.Types
 import SnippetsLean.TomlParser
+import SnippetsLean.JsonRpc
 import Std.Data.HashMap
 
 namespace SnippetsLean
-
-open Lean
 
 /-- Conditional debug logging, mirroring `logDebug` in the F# server. -/
 def logDebug (config : Config) (msg : String) : IO Unit := do
@@ -21,7 +19,7 @@ structure ServerState where
 
 /-- Result of handling a message. Mirrors `MessageHandler.MessageResult`. -/
 inductive MessageResult where
-  | response (msg : Lean.JsonRpc.Message)
+  | response (msg : Message)
   | noResponse
   | shutdown
 
@@ -37,13 +35,13 @@ def createInitializeResult : Json :=
     [ ("capabilities",
         Json.mkObj
           [ -- TextDocumentSyncKind.Full = 1
-            ("textDocumentSync", toJson 1),
+            ("textDocumentSync", Json.ofNat 1),
             ("completionProvider",
               Json.mkObj
-                [ ("resolveProvider", toJson false),
-                  ("triggerCharacters", Json.arr #[toJson ":", toJson "^", toJson "_"]) ]) ]),
+                [ ("resolveProvider", Json.bool false),
+                  ("triggerCharacters", Json.arr #[Json.str ":", Json.str "^", Json.str "_"]) ]) ]),
       ("serverInfo",
-        Json.mkObj [ ("name", toJson "Snippets"), ("version", toJson "0.2.0") ]) ]
+        Json.mkObj [ ("name", Json.str "Snippets"), ("version", Json.str "0.2.0") ]) ]
 
 def handleDidOpen (state : ServerState) (uri text : String) : ServerState :=
   { state with documents := state.documents.insert uri (splitLines text) }
@@ -70,25 +68,25 @@ def completionItems (snippets : Std.HashMap String Snippet) (line character : Na
         let startCharacter := character - 1
         let range (startCh endCh : Nat) : Json :=
           Json.mkObj
-            [ ("start", Json.mkObj [ ("line", toJson line), ("character", toJson startCh) ]),
-              ("end", Json.mkObj [ ("line", toJson line), ("character", toJson endCh) ]) ]
+            [ ("start", Json.mkObj [ ("line", Json.ofNat line), ("character", Json.ofNat startCh) ]),
+              ("end", Json.mkObj [ ("line", Json.ofNat line), ("character", Json.ofNat endCh) ]) ]
         return Json.mkObj
-          [ ("label", toJson key),
-            ("kind", toJson 15),
-            ("detail", toJson snippet.expansion),
-            ("sortText", toJson "0"),
-            ("filterText", toJson key),
-            ("insertTextFormat", toJson 1),
+          [ ("label", Json.str key),
+            ("kind", Json.ofNat 15),
+            ("detail", Json.str snippet.expansion),
+            ("sortText", Json.str "0"),
+            ("filterText", Json.str key),
+            ("insertTextFormat", Json.ofNat 1),
             ("textEdit",
               Json.mkObj
-                [ ("newText", toJson snippet.expansion),
+                [ ("newText", Json.str snippet.expansion),
                   ("insert", range startCharacter character),
                   ("replace", range startCharacter character) ]) ]
-  Json.mkObj [ ("isIncomplete", toJson false), ("items", Json.arr items) ]
+  Json.mkObj [ ("isIncomplete", Json.bool false), ("items", Json.arr items) ]
 
 private def getProp (j : Json) (name : String) : Option Json :=
   match j.getObjVal? name with
-  | Except.ok v => if v == Json.null then none else some v
+  | Except.ok v => if v.isNull then none else some v
   | Except.error _ => none
 
 private def getStr (j : Json) (name : String) : Option String :=
@@ -127,33 +125,26 @@ private def parseCompletionParams (params : Json) : Option (String × Nat × Nat
     | none => ""
   return (uri, line, character, triggerChar)
 
-private def paramsOf (params? : Option Lean.Json.Structured) : Json :=
-  match params? with
-  | some s => toJson s
-  | none => Json.null
-
 /-- Dispatch an incoming JSON-RPC message. Mirrors `handleMessage`. -/
-def handleMessage (state : ServerState) (msg : Lean.JsonRpc.Message) :
+def handleMessage (state : ServerState) (msg : Message) :
     IO (ServerState × MessageResult) := do
   match msg with
-  | Lean.JsonRpc.Message.request id method params? =>
-    let params := paramsOf params?
+  | Message.request id method params =>
     match method with
     | "initialize" =>
-      return (state, MessageResult.response (Lean.JsonRpc.Message.response id createInitializeResult))
+      return (state, MessageResult.response (Message.response id createInitializeResult))
     | "textDocument/completion" =>
       let result :=
         match parseCompletionParams params with
         | some (_, line, character, triggerChar) =>
           completionItems state.snippets line character triggerChar
         | none => Json.null
-      return (state, MessageResult.response (Lean.JsonRpc.Message.response id result))
+      return (state, MessageResult.response (Message.response id result))
     | "shutdown" =>
-      return (state, MessageResult.response (Lean.JsonRpc.Message.response id Json.null))
+      return (state, MessageResult.response (Message.response id Json.null))
     | "exit" => return (state, MessageResult.shutdown)
     | _ => return (state, MessageResult.noResponse)
-  | Lean.JsonRpc.Message.notification method params? =>
-    let params := paramsOf params?
+  | Message.notification method params =>
     match method with
     | "textDocument/didOpen" =>
       let state :=

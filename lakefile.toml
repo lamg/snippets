@@ -2,6 +2,11 @@ name = "snippets"
 version = "0.2.0"
 defaultTargets = ["snippets"]
 
+[[require]]
+name = "json"
+git = "https://github.com/paulbutcher/lean-json.git"
+rev = "v0.3.1"
+
 [[lean_lib]]
 name = "SnippetsLean"
 

@@ -1,5 +1,5 @@
 import SnippetsLean
-import Lean.Data.Lsp.Communication
+import Json
 
 open SnippetsLean
 
@@ -51,9 +51,8 @@ def parserTests (h : Harness) : IO Harness := do
       && (s.get? "key").map (·.expansion) == some "value"
   expectParse h "parse empty file" "" fun s => s.size == 0
 
-private def parseMessage (s : String) : Option Lean.JsonRpc.Message :=
-  (Lean.Json.parse s).toOption.bind fun j =>
-    (Lean.fromJson? j : Except String Lean.JsonRpc.Message).toOption
+private def parseMsg (s : String) : Option Message :=
+  (Json.parse s).toOption.bind SnippetsLean.parseMessage
 
 private def sampleSnippets : Std.HashMap String Snippet :=
   Std.HashMap.ofList
@@ -62,7 +61,7 @@ private def sampleSnippets : Std.HashMap String Snippet :=
       (":and", { key := ":and", expansion := "∧" }),
       ("^2", { key := "^2", expansion := "²" }) ]
 
-private def labelsOf (j : Lean.Json) : Array String :=
+private def labelsOf (j : Json) : Array String :=
   match j.getObjVal? "items" with
   | Except.ok items =>
     match items.getArr? with
@@ -103,17 +102,17 @@ def protocolTests (h : Harness) : IO Harness := do
   let h ← check h "didClose removes the document"
     (state3.documents.get? "file:///tmp/a.md" == none)
   let h ← do
-    match parseMessage
+    match parseMsg
         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}" with
     | some msg =>
       let (_, result) ← handleMessage state msg
       check h "initialize request gets a response" (
         match result with
-        | MessageResult.response (Lean.JsonRpc.Message.response _ _) => true
+        | MessageResult.response (Message.response _ _) => true
         | _ => false)
     | none => check h "initialize request gets a response" false
   let h ← do
-    match parseMessage "{\"jsonrpc\":\"2.0\",\"method\":\"exit\"}" with
+    match parseMsg "{\"jsonrpc\":\"2.0\",\"method\":\"exit\"}" with
     | some msg =>
       let (_, result) ← handleMessage state msg
       check h "exit notification shuts down" (
@@ -121,7 +120,7 @@ def protocolTests (h : Harness) : IO Harness := do
         | MessageResult.shutdown => true
         | _ => false)
     | none => check h "exit notification shuts down" false
-  match parseMessage "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"unknown/thing\",\"params\":{}}" with
+  match parseMsg "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"unknown/thing\",\"params\":{}}" with
   | some msg =>
     let (_, result) ← handleMessage state msg
     check h "unknown method is ignored without a response" (
@@ -132,17 +131,21 @@ def protocolTests (h : Harness) : IO Harness := do
 
 def framingTests (h : Harness) : IO Harness := do
   let path : System.FilePath := ".lake/framing-test.tmp"
-  let original : Lean.JsonRpc.Message :=
-    Lean.JsonRpc.Message.response (Lean.JsonRpc.RequestID.num 42)
-      (Lean.Json.mkObj [("ok", Lean.toJson true)])
+  let original : Message :=
+    Message.response (Json.ofNat 42) (Json.mkObj [("ok", Json.bool true)])
   let writeHandle ← IO.FS.Handle.mk path IO.FS.Mode.write
-  Lean.IO.FS.Stream.writeLspMessage (IO.FS.Stream.ofHandle writeHandle) original
+  writeMessage (IO.FS.Stream.ofHandle writeHandle) original
   writeHandle.flush
   let readHandle ← IO.FS.Handle.mk path IO.FS.Mode.read
-  let roundTripped ← Lean.IO.FS.Stream.readLspMessage (IO.FS.Stream.ofHandle readHandle)
+  let roundTripped ← readMessage (IO.FS.Stream.ofHandle readHandle)
   IO.FS.removeFile path
-  check h "LSP framing round-trips a response message"
-    (Lean.toJson roundTripped == Lean.toJson original)
+  let h ← check h "LSP framing round-trips a response message"
+    (roundTripped == some original)
+  match Json.parse "{\"a\":\"∀\\u2200\",\"b\":\"😀\",\"c\":[1,2.5e3,null]}" with
+  | Except.ok j =>
+    let a := (j.getObjVal? "a").toOption.bind (·.getStr?.toOption)
+    check h "JSON parser handles unicode escapes and literals" (a == some "∀∀")
+  | Except.error _ => check h "JSON parser handles unicode escapes and literals" false
 
 def main : IO UInt32 := do
   let h ← parserTests {}
